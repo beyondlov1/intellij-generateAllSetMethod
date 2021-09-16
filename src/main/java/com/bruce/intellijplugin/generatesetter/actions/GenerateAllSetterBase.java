@@ -17,7 +17,11 @@ package com.bruce.intellijplugin.generatesetter.actions;
 import com.bruce.intellijplugin.generatesetter.CommonConstants;
 import com.bruce.intellijplugin.generatesetter.GetInfo;
 import com.bruce.intellijplugin.generatesetter.Parameters;
-import com.bruce.intellijplugin.generatesetter.complexreturntype.*;
+import com.bruce.intellijplugin.generatesetter.complexreturntype.ComplexReturnTypeHandler;
+import com.bruce.intellijplugin.generatesetter.complexreturntype.InsertDto;
+import com.bruce.intellijplugin.generatesetter.complexreturntype.ListReturnTypeHandler;
+import com.bruce.intellijplugin.generatesetter.complexreturntype.MapReturnTypeHandler;
+import com.bruce.intellijplugin.generatesetter.complexreturntype.SetReturnTypeHandler;
 import com.bruce.intellijplugin.generatesetter.utils.PsiClassUtils;
 import com.bruce.intellijplugin.generatesetter.utils.PsiDocumentUtils;
 import com.bruce.intellijplugin.generatesetter.utils.PsiToolUtils;
@@ -28,7 +32,20 @@ import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.TextRange;
-import com.intellij.psi.*;
+import com.intellij.psi.PsiBinaryExpression;
+import com.intellij.psi.PsiClass;
+import com.intellij.psi.PsiDeclarationStatement;
+import com.intellij.psi.PsiDocumentManager;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiField;
+import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiInstanceOfExpression;
+import com.intellij.psi.PsiJavaFile;
+import com.intellij.psi.PsiLocalVariable;
+import com.intellij.psi.PsiMethod;
+import com.intellij.psi.PsiParameter;
+import com.intellij.psi.PsiType;
+import com.intellij.psi.PsiTypeElement;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiTypesUtil;
 import com.intellij.util.IncorrectOperationException;
@@ -36,7 +53,13 @@ import org.apache.commons.lang.StringUtils;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * @author bruce ge
@@ -152,7 +175,41 @@ public abstract class GenerateAllSetterBase extends PsiElementBaseIntentionActio
             }
             handleWithLocalVariable(psiLocal, project, psiLocal);
 
-        } else if (psiParent instanceof PsiMethod) {
+        }else if (element.getPrevSibling() instanceof PsiDeclarationStatement){
+            PsiElement firstChild = element.getPrevSibling().getFirstChild();
+            if (firstChild instanceof PsiLocalVariable){
+                PsiLocalVariable psiLocal = (PsiLocalVariable) firstChild;
+                handleWithLocalVariable(psiLocal, project, psiLocal);
+            }
+        }else if (element.getPrevSibling().getFirstChild() instanceof PsiInstanceOfExpression){
+            PsiInstanceOfExpression expression = (PsiInstanceOfExpression) element.getPrevSibling().getFirstChild();
+            PsiType type = expression.getOperand().getType();
+            PsiType returnType = expression.getCheckType().getType();
+            String name = expression.getOperand().getText();
+            System.out.println();
+
+            String splitText;
+            PsiMethod parentMethod = PsiTreeUtil.getParentOfType(element, PsiMethod.class);
+            if (parentMethod != null){
+                splitText = extractSplitText(parentMethod, editor.getDocument());
+            }else{
+                splitText = "   ";
+            }
+            handleWithNameTypeReturnType(name,type,returnType, project, element.getContainingFile(), splitText,element.getPrevSibling(), editor);
+        }else if (element.getPrevSibling().getFirstChild() instanceof PsiBinaryExpression){
+            PsiBinaryExpression binaryExpression = (PsiBinaryExpression) element.getPrevSibling().getFirstChild();
+            PsiType type = binaryExpression.getLOperand().getType();
+            PsiType returnType = ((PsiTypeElement)binaryExpression.getROperand().getFirstChild()).getType();
+            String name = binaryExpression.getLOperand().getText();
+            String splitText;
+            PsiMethod parentMethod = PsiTreeUtil.getParentOfType(element, PsiMethod.class);
+            if (parentMethod != null){
+                splitText = extractSplitText(parentMethod, editor.getDocument());
+            }else{
+                splitText = "   ";
+            }
+            handleWithNameTypeReturnType(name,type,returnType, project, element.getContainingFile(), splitText,element.getPrevSibling(), editor);
+        }else if (psiParent instanceof PsiMethod) {
             PsiMethod method = (PsiMethod) psiParent;
             if (method.getReturnType() == null) {
                 return;
@@ -161,6 +218,38 @@ public abstract class GenerateAllSetterBase extends PsiElementBaseIntentionActio
             handleWithMethod(method, project, method);
         }
     }
+
+    private void handleWithNameTypeReturnType(String name, PsiType sourceType, PsiType returnType, Project project, PsiFile psiFile, String splitText, PsiElement element, Editor editor){
+
+        PsiDocumentManager psiDocumentManager = PsiDocumentManager.getInstance(project);
+
+        Document document = psiDocumentManager.getDocument(psiFile);
+
+        Parameters returnTypeInfo = PsiToolUtils.extractParamInfo(returnType);
+        InsertDto dto = null;
+        boolean hasGuava = PsiToolUtils.checkGuavaExist(project, element);
+        if (returnTypeInfo.getCollectPackege() != null
+                && handlerMap.containsKey(returnTypeInfo.getCollectPackege())) {
+            // todo
+            throw new RuntimeException("暂不支持");
+        } else {
+            PsiClass returnTypeClass = PsiTypesUtil.getPsiClass(returnType);
+            dto = getBaseInsertDto(splitText, hasGuava, name, sourceType, returnTypeClass);
+        }
+        dto.setAddedText(StringUtils.trim(dto.getAddedText()));
+        if (dto.getAddedText() != null) {
+            document.replaceString(element.getTextRange().getStartOffset(), element.getTextRange().getEndOffset(), dto.getAddedText());
+        }
+        PsiDocumentUtils.commitAndSaveDocument(psiDocumentManager, document);
+        if (dto.getImportList() != null) {
+            PsiToolUtils.addImportToFile(psiDocumentManager,
+                    (PsiJavaFile) element.getContainingFile(), document,
+                    dto.getImportList());
+        }
+
+    }
+
+
 
     private void handleWithMethod(PsiMethod method, Project project,
                                   PsiElement element) {
@@ -237,6 +326,33 @@ public abstract class GenerateAllSetterBase extends PsiElementBaseIntentionActio
                     splitText, importList, hasGuava, info);
         }
         insertText += "return " + generateName + ";";
+        dto.setAddedText(insertText);
+        dto.setImportList(importList);
+        return dto;
+    }
+
+    @NotNull
+    private InsertDto getBaseInsertDto(String splitText,
+                                       boolean hasGuava, String name, PsiType sourceType, PsiClass returnType) {
+        InsertDto dto = new InsertDto();
+        List<PsiMethod> methods = PsiClassUtils.extractSetMethods(returnType);
+        Set<String> importList = Sets.newHashSet();
+        String generateName = PsiToolUtils.lowerStart(Objects.requireNonNull(returnType.getName()));
+        GetInfo info = null;
+        PsiClass sourceClass = PsiTypesUtil.getPsiClass(sourceType);
+        List<PsiMethod> sourceGetMethods = PsiClassUtils.extractGetMethod(sourceClass);
+        if (sourceGetMethods.size() > 0) {
+            info = buildInfo(name, sourceGetMethods);
+        }
+        String insertText = splitText + returnType.getName() + " " + generateName
+                + " = new " + returnType.getName() + "();";
+        if (info == null) {
+            insertText += generateStringForNoParam(generateName, methods,
+                    splitText, importList, hasGuava);
+        } else {
+            insertText += generateStringForParam(generateName, methods,
+                    splitText, importList, hasGuava, info);
+        }
         dto.setAddedText(insertText);
         dto.setImportList(importList);
         return dto;
@@ -338,9 +454,56 @@ public abstract class GenerateAllSetterBase extends PsiElementBaseIntentionActio
     }
 
     @NotNull
+    private static GetInfo buildInfo(String sourceName,
+                                     List<PsiMethod> sourceGetMethod) {
+        GetInfo info;
+        info = new GetInfo();
+        info.setParamName(sourceName);
+        info.setGetMethods(sourceGetMethod);
+        Map<String, PsiMethod> nameToMethodMaps = Maps.newHashMap();
+        for (PsiMethod getMethod : sourceGetMethod) {
+            if (getMethod.getName().startsWith(IS)) {
+                nameToMethodMaps.put(
+                        getMethod.getName().substring(2).toLowerCase(),
+                        getMethod);
+            } else if (getMethod.getName().startsWith(GET)) {
+                nameToMethodMaps.put(
+                        getMethod.getName().substring(3).toLowerCase(),
+                        getMethod);
+            }
+        }
+        info.setNameToMethodMap(nameToMethodMaps);
+        return info;
+    }
+
+
+    @NotNull
     private static String extractSplitText(PsiMethod method,
                                            Document document) {
         int startOffset = method.getTextRange().getStartOffset();
+        int lastLine = startOffset - 1;
+        String text = document.getText(new TextRange(lastLine, lastLine + 1));
+        boolean isTable = false;
+        while (!text.equals("\n")) {
+            if (text.equals('\t')) {
+                isTable = true;
+            }
+            lastLine--;
+            text = document.getText(new TextRange(lastLine, lastLine + 1));
+        }
+        String methodStartToLastLineText = document
+                .getText(new TextRange(lastLine, startOffset));
+        String splitText = null;
+        if (isTable) {
+            splitText += methodStartToLastLineText + "\t";
+        } else {
+            splitText = methodStartToLastLineText + "    ";
+        }
+        return splitText;
+    }
+
+    @NotNull
+    private static String extractSplitText(int startOffset, Document document) {
         int lastLine = startOffset - 1;
         String text = document.getText(new TextRange(lastLine, lastLine + 1));
         boolean isTable = false;
@@ -555,8 +718,39 @@ public abstract class GenerateAllSetterBase extends PsiElementBaseIntentionActio
             return isValidAsMethodWithSetterMethod(element);
         }
 
+        if (element.getPrevSibling() instanceof PsiDeclarationStatement){
+            return true;
+        }
+
+        if (element.getPrevSibling() != null && element.getPrevSibling().getFirstChild()!=null && element.getPrevSibling().getFirstChild() instanceof PsiInstanceOfExpression){
+            return true;
+        }
+
+        if (element.getPrevSibling() != null && element.getPrevSibling().getFirstChild() != null && element.getPrevSibling().getFirstChild() instanceof PsiBinaryExpression){
+            if (element.getPrevSibling().getFirstChild().getText().contains(">")){
+                return true;
+            }
+            return false;
+        }
+
+
         return false;
     }
+
+    private <T extends PsiElement> T getFirstParent(PsiElement element,Class<T> targetClass){
+        PsiElement parent = element.getParent();
+        if (parent == null){
+            return null;
+        }
+
+        if (targetClass.isAssignableFrom(parent.getClass())){
+            return (T) parent;
+        }
+
+        return getFirstParent(parent, targetClass);
+    }
+
+
 
     @NotNull
     private Boolean isValidAsMethodWithSetterMethod(@NotNull PsiElement element) {
