@@ -135,5 +135,9 @@
         <intentionAction>
             <className>com.bruce.intellijplugin.generatesetter.actions.GenerateSetterGetterFromFunctionAction</className>
         </intentionAction>
+
+        <intentionAction>
+            <className>com.bruce.intellijplugin.generatesetter.actions.GenerateMockAction</className>
+        </intentionAction>
     </extensions>
 </idea-plugin>

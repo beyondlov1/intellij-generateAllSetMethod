@@ -454,7 +454,7 @@ public abstract class GenerateAllSetterBase extends PsiElementBaseIntentionActio
     }
 
     @NotNull
-    private static GetInfo buildInfo(String sourceName,
+    protected static GetInfo buildInfo(String sourceName,
                                      List<PsiMethod> sourceGetMethod) {
         GetInfo info;
         info = new GetInfo();
