@@ -126,6 +126,11 @@ public class PsiToolUtils {
         return name.substring(0, 1).toLowerCase() + name.substring(1);
     }
 
+
+    public static String upperStart(String name) {
+        return name.substring(0, 1).toUpperCase() + name.substring(1);
+    }
+
 //    public static WrapInfo extractWrappInfo(String typeFullName) {
 //        int u = typeFullName.indexOf("<");
 //        if (u == -1) {

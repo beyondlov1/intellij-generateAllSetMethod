@@ -29,6 +29,7 @@ import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiMethod;
+import com.intellij.psi.PsiPrimitiveType;
 import com.intellij.psi.PsiType;
 import com.intellij.psi.PsiTypeElement;
 import com.intellij.psi.impl.source.PsiClassReferenceType;
@@ -94,56 +95,74 @@ public class GenerateMockAction extends GenerateAllSetterBase {
             sb.append(psiClass.getName()).append(" ").append(varName).append(" = new ").append(psiClass.getName()).append("();");
             sb.append("\n");
 
+            lvlPrefix = lvlPrefix + 0;
             for (PsiMethod method : sourceGetMethods) {
+                String fieldName = getFieldNameByGetMethod(method);
+                if (fieldName == null){
+                    continue;
+                }
+
                 PsiType returnType = method.getReturnType();
                 PsiClass returnClass = PsiTypesUtil.getPsiClass(returnType);
-                String name = method.getName();
-                String setterMethodName = "set" + name.substring(3);
-                if (returnClass!= null){
-                    if (StringUtils.equalsIgnoreCase(returnClass.getName(), "list")){
-                        String listVarName = PsiToolUtils.lowerStart(name.substring(3));
-                        listVarName = listVarName + lvlPrefix;
-                        sb.append(mockList(returnType, listVarName, lvlPrefix).getBlock());
-                        sb.append(generateMethodWithParam(varName, setterMethodName, listVarName));
-                    } else {
-                        String oneVarName = PsiToolUtils.lowerStart(name.substring(3));
-                        oneVarName = oneVarName + lvlPrefix;
-                        MockItem mockItem = mockOne(returnClass, oneVarName,lvlPrefix);
-                        sb.append(mockItem.getBlock());
-                        sb.append(generateMethodWithParam(varName, setterMethodName, mockItem.getVarName()));
-                    }
+                String setterMethodName = "set" + PsiToolUtils.upperStart(fieldName);
+                if (returnClass!= null && StringUtils.equalsIgnoreCase(returnClass.getName(), "list")){
+                    String listVarName = PsiToolUtils.lowerStart(fieldName);
+                    listVarName = listVarName + lvlPrefix;
+                    sb.append(mockList(returnType, listVarName, lvlPrefix).getBlock());
+                    sb.append(generateMethodWithParam(varName, setterMethodName, listVarName));
+                } else {
+                    String oneVarName = PsiToolUtils.lowerStart(fieldName);
+                    oneVarName = oneVarName + lvlPrefix;
+                    MockItem mockItem = mockOne(returnType, oneVarName,lvlPrefix);
+                    sb.append(mockItem.getBlock());
+                    sb.append(generateMethodWithParam(varName, setterMethodName, mockItem.getVarName()));
                 }
             }
         }
         return new MockItem(varName, sb.toString());
     }
 
-    private MockItem mockOne(PsiClass oneClass, String oneVarName, String lvlPrefix){
-        if (StringUtils.equalsIgnoreCase(oneClass.getName(), "int")
-                || StringUtils.equalsIgnoreCase(oneClass.getName(), "integer")){
-            return new MockItem(oneVarName,oneClass.getName()+" "+oneVarName + "=" + RandomUtils.nextInt(0,Integer.MAX_VALUE) + ";\n");
-        } else if (StringUtils.equalsIgnoreCase(oneClass.getName(), "String")){
-            return new MockItem(oneVarName,oneClass.getName()+" "+oneVarName + "=" + "\""+ getRandomString(RandomUtils.nextInt(10,40))+"\";\n");
-        } else if (StringUtils.equalsIgnoreCase(oneClass.getName(), "boolean")){
-            return new MockItem(oneVarName,oneClass.getName()+" "+oneVarName + "=" + (RandomUtils.nextInt(0, 1) % 2 == 0) +";\n");
-        } else if (StringUtils.equalsIgnoreCase(oneClass.getName(), "date")){
-            return new MockItem(oneVarName,oneClass.getName()+" "+oneVarName + "=" + "new Date();\n");
-        } else if (StringUtils.equalsIgnoreCase(oneClass.getName(), "long")){
-            return new MockItem(oneVarName,oneClass.getName()+" "+oneVarName + "=" +RandomUtils.nextLong(0,Long.MAX_VALUE)+ "L;\n");
-        } else if (StringUtils.equalsIgnoreCase(oneClass.getName(), "byte")){
-            return new MockItem(oneVarName,oneClass.getName()+" "+oneVarName + "=" + RandomUtils.nextInt(0,Byte.MAX_VALUE)+ ";\n");
-        } else if (StringUtils.equalsIgnoreCase(oneClass.getName(), "float")){
-            return new MockItem(oneVarName,oneClass.getName()+" "+oneVarName + "=" +RandomUtils.nextFloat(0,Integer.MAX_VALUE)+ ";\n");
-        } else if (StringUtils.equalsIgnoreCase(oneClass.getName(), "double")){
-            return new MockItem(oneVarName,oneClass.getName()+" "+oneVarName + "=" +RandomUtils.nextDouble(0,Integer.MAX_VALUE)+ ";\n");
-        } else if (StringUtils.equalsIgnoreCase(oneClass.getName(), "bigDecimal")){
-            return new MockItem(oneVarName,oneClass.getName()+" "+oneVarName + "=" + BigDecimal.valueOf(RandomUtils.nextDouble(0,Integer.MAX_VALUE)).setScale(2, RoundingMode.HALF_UP) + ";\n");
-        } else if (StringUtils.equalsIgnoreCase(oneClass.getName(), "char")||StringUtils.equalsIgnoreCase(oneClass.getName(), "character")){
-            return new MockItem(oneVarName,oneClass.getName()+" "+oneVarName + "=" + ((char)RandomUtils.nextInt(0,Character.MAX_VALUE)) + ";\n");
-        } else if (StringUtils.equalsIgnoreCase(oneClass.getName(), "datetime")){
-            return new MockItem(oneVarName,oneClass.getName()+" "+oneVarName + "=" + "LocalDateTime.now();\n");
+    private String getFieldNameByGetMethod(PsiMethod getMethod){
+        if (getMethod.getName().startsWith(IS)) {
+            return PsiToolUtils.lowerStart(getMethod.getName().substring(2));
+        } else if (getMethod.getName().startsWith(GET)) {
+            return PsiToolUtils.lowerStart(getMethod.getName().substring(3));
+        }
+        return null;
+    }
+
+    private MockItem mockOne(PsiType oneType, String oneVarName, String lvlPrefix){
+        String className;
+        if (oneType instanceof PsiPrimitiveType){
+            className = ((PsiPrimitiveType) oneType).getName();
+        }else {
+            className = Objects.requireNonNull(PsiTypesUtil.getPsiClass(oneType)).getName();
+        }
+        if (StringUtils.equalsIgnoreCase(className, "int")
+                || StringUtils.equalsIgnoreCase(className, "integer")){
+            return new MockItem(oneVarName, className +" "+oneVarName + "=" + RandomUtils.nextInt(0,Integer.MAX_VALUE) + ";\n");
+        } else if (StringUtils.equalsIgnoreCase(className, "String")){
+            return new MockItem(oneVarName, className +" "+oneVarName + "=" + "\""+ getRandomString(RandomUtils.nextInt(10,40))+"\";\n");
+        } else if (StringUtils.equalsIgnoreCase(className, "boolean")){
+            return new MockItem(oneVarName, className +" "+oneVarName + "=" + (RandomUtils.nextInt(0, 1) % 2 == 0) +";\n");
+        } else if (StringUtils.equalsIgnoreCase(className, "date")){
+            return new MockItem(oneVarName, className +" "+oneVarName + "=" + "new Date();\n");
+        } else if (StringUtils.equalsIgnoreCase(className, "long")){
+            return new MockItem(oneVarName, className +" "+oneVarName + "=" +RandomUtils.nextLong(0,Long.MAX_VALUE)+ "L;\n");
+        } else if (StringUtils.equalsIgnoreCase(className, "byte")){
+            return new MockItem(oneVarName, className +" "+oneVarName + "=" + RandomUtils.nextInt(0,Byte.MAX_VALUE)+ ";\n");
+        } else if (StringUtils.equalsIgnoreCase(className, "float")){
+            return new MockItem(oneVarName, className +" "+oneVarName + "=" +RandomUtils.nextFloat(0,Integer.MAX_VALUE)+ ";\n");
+        } else if (StringUtils.equalsIgnoreCase(className, "double")){
+            return new MockItem(oneVarName, className +" "+oneVarName + "=" +RandomUtils.nextDouble(0,Integer.MAX_VALUE)+ ";\n");
+        } else if (StringUtils.equalsIgnoreCase(className, "bigDecimal")){
+            return new MockItem(oneVarName, className +" "+oneVarName + "=" + BigDecimal.valueOf(RandomUtils.nextDouble(0,Integer.MAX_VALUE)).setScale(2, RoundingMode.HALF_UP) + ";\n");
+        } else if (StringUtils.equalsIgnoreCase(className, "char")||StringUtils.equalsIgnoreCase(className, "character")){
+            return new MockItem(oneVarName, className +" "+oneVarName + "=" + ((char)RandomUtils.nextInt(0,Character.MAX_VALUE)) + ";\n");
+        } else if (StringUtils.equalsIgnoreCase(className, "datetime")){
+            return new MockItem(oneVarName, className +" "+oneVarName + "=" + "LocalDateTime.now();\n");
         } else {
-            return mockOneClass(oneClass,lvlPrefix);
+            return mockOneClass(Objects.requireNonNull(PsiTypesUtil.getPsiClass(oneType)),lvlPrefix);
         }
     }
 
@@ -177,7 +196,7 @@ public class GenerateMockAction extends GenerateAllSetterBase {
                         mockItem = mockList(parameter, varInList, lvlPrefix+i);
                     }else{
                         varInList = PsiToolUtils.lowerStart(typeParameter.getName() + lvlPrefix + i);
-                        mockItem = mockOne(typeParameter,varInList, lvlPrefix+i);
+                        mockItem = mockOne(parameter,varInList, lvlPrefix+i);
                     }
                     mockItem.setBlock(mockItem.getBlock().replace(mockItem.getVarName(), varInList));
                     sb.append(mockItem.getBlock());
