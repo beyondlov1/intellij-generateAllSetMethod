@@ -17,3 +17,7 @@ source > User2.class
 User2.class
 <Alt+Enter> -> generate mock
 ```
+
+### todo
+- enum
+- Number

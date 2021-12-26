@@ -16,7 +16,6 @@ package com.bruce.intellijplugin.generatesetter.actions;
 
 import com.bruce.intellijplugin.generatesetter.CommonConstants;
 import com.bruce.intellijplugin.generatesetter.GenerateAllHandlerAdapter;
-import com.bruce.intellijplugin.generatesetter.GetInfo;
 import com.bruce.intellijplugin.generatesetter.utils.PsiClassUtils;
 import com.bruce.intellijplugin.generatesetter.utils.PsiDocumentUtils;
 import com.bruce.intellijplugin.generatesetter.utils.PsiToolUtils;
@@ -35,6 +34,7 @@ import com.intellij.psi.PsiTypeElement;
 import com.intellij.psi.impl.source.PsiClassReferenceType;
 import com.intellij.psi.util.PsiTypesUtil;
 import com.intellij.util.IncorrectOperationException;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.RandomUtils;
@@ -43,7 +43,9 @@ import org.jetbrains.annotations.NotNull;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -69,50 +71,56 @@ public class GenerateMockAction extends GenerateAllSetterBase {
     @Override
     public void invoke(@NotNull Project project, Editor editor, @NotNull PsiElement element) throws IncorrectOperationException {
         if(isAvailable(project,editor, element)){
-            PsiClass psiClass = ((PsiClassType) ((PsiTypeElement) element.getPrevSibling().getFirstChild().getFirstChild()).getType()).resolve();
-            mock(psiClass, project,element.getContainingFile(), element.getPrevSibling());
+            PsiClassType psiType = (PsiClassType) ((PsiTypeElement) element.getPrevSibling().getFirstChild().getFirstChild()).getType();
+            mock(psiType, project,element.getContainingFile(), element.getPrevSibling());
         }
     }
 
-    private void mock(PsiClass psiClass, Project project, PsiFile psiFile, PsiElement element) {
+    private void mock(PsiClassType psiType, Project project, PsiFile psiFile, PsiElement element) {
         PsiDocumentManager psiDocumentManager = PsiDocumentManager.getInstance(project);
         Document document = psiDocumentManager.getDocument(psiFile);
-        document.replaceString(element.getTextRange().getStartOffset(), element.getTextRange().getEndOffset(), mockOneClass(psiClass,"").getBlock());
+        document.replaceString(element.getTextRange().getStartOffset(), element.getTextRange().getEndOffset(), mockOne(psiType,PsiToolUtils.lowerStart(Objects.requireNonNull(psiType.getName())),"").getBlock());
         PsiDocumentUtils.commitAndSaveDocument(psiDocumentManager, document);
     }
 
-    private MockItem mockOneClass(PsiClass psiClass, String lvlPrefix){
+    private MockItem mockCustomClass(PsiClass psiClass, String varName, String lvlPrefix){
         StringBuilder sb = new StringBuilder();
-        String varName = PsiToolUtils.lowerStart(Objects.requireNonNull(psiClass.getName()));
         List<PsiMethod> sourceGetMethods = PsiClassUtils.extractGetMethod(psiClass);
-        GetInfo getInfo = null;
-        if (sourceGetMethods.size() > 0) {
-            getInfo = buildInfo(varName, sourceGetMethods);
-        }
+        List<PsiMethod> sourceSetMethods = PsiClassUtils.extractSetMethods(psiClass);
 
-        if (getInfo != null){
+        Map<String, PsiMethod> getFieldMap = field2Method(sourceGetMethods);
+        Map<String, PsiMethod> setFieldMap = field2Method(sourceSetMethods);
+
+        if (CollectionUtils.isNotEmpty(sourceGetMethods)){
             sb.append("\n");
             sb.append(psiClass.getName()).append(" ").append(varName).append(" = new ").append(psiClass.getName()).append("();");
             sb.append("\n");
 
             lvlPrefix = lvlPrefix + 0;
-            for (PsiMethod method : sourceGetMethods) {
-                String fieldName = getFieldNameByGetMethod(method);
-                if (fieldName == null){
+            for (String fieldName : getFieldMap.keySet()) {
+                PsiMethod method = getFieldMap.get(fieldName);
+                if (method == null){
                     continue;
                 }
-
                 PsiType returnType = method.getReturnType();
                 PsiClass returnClass = PsiTypesUtil.getPsiClass(returnType);
-                String setterMethodName = "set" + PsiToolUtils.upperStart(fieldName);
+                PsiMethod setterMethod = setFieldMap.get(fieldName);
+                String setterMethodName;
+                if (setterMethod == null){
+                    setterMethodName = "set" + PsiToolUtils.upperStart(fieldName);
+                }else{
+                    setterMethodName = setterMethod.getName();
+                }
                 if (returnClass!= null && StringUtils.equalsIgnoreCase(returnClass.getName(), "list")){
                     String listVarName = PsiToolUtils.lowerStart(fieldName);
-                    listVarName = listVarName + lvlPrefix;
+                    listVarName = listVarName + "$" +varName ;
+//                    listVarName = listVarName  + lvlPrefix;
                     sb.append(mockList(returnType, listVarName, lvlPrefix).getBlock());
                     sb.append(generateMethodWithParam(varName, setterMethodName, listVarName));
                 } else {
                     String oneVarName = PsiToolUtils.lowerStart(fieldName);
-                    oneVarName = oneVarName + lvlPrefix;
+                    oneVarName = oneVarName + "$" + varName ;
+//                    oneVarName = oneVarName  + lvlPrefix;
                     MockItem mockItem = mockOne(returnType, oneVarName,lvlPrefix);
                     sb.append(mockItem.getBlock());
                     sb.append(generateMethodWithParam(varName, setterMethodName, mockItem.getVarName()));
@@ -120,6 +128,24 @@ public class GenerateMockAction extends GenerateAllSetterBase {
             }
         }
         return new MockItem(varName, sb.toString());
+    }
+
+    /**
+     * field -> get/set
+     */
+    private Map<String,PsiMethod> field2Method(List<PsiMethod> methods){
+        Map<String, PsiMethod> result = new HashMap<>();
+        for (PsiMethod method : methods) {
+            String name = method.getName();
+            if (name.startsWith("get")){
+                result.put(PsiToolUtils.lowerStart(name.substring(3)), method);
+            }else if (name.startsWith("is")){
+                result.put(PsiToolUtils.lowerStart(name.substring(2)), method);
+            }else if (name.startsWith("set")){
+                result.put(PsiToolUtils.lowerStart(name.substring(3)), method);
+            }
+        }
+        return result;
     }
 
     private String getFieldNameByGetMethod(PsiMethod getMethod){
@@ -162,7 +188,7 @@ public class GenerateMockAction extends GenerateAllSetterBase {
         } else if (StringUtils.equalsIgnoreCase(className, "datetime")){
             return new MockItem(oneVarName, className +" "+oneVarName + "=" + "LocalDateTime.now();\n");
         } else {
-            return mockOneClass(Objects.requireNonNull(PsiTypesUtil.getPsiClass(oneType)),lvlPrefix);
+            return mockCustomClass(Objects.requireNonNull(PsiTypesUtil.getPsiClass(oneType)),oneVarName,lvlPrefix);
         }
     }
 
@@ -192,10 +218,10 @@ public class GenerateMockAction extends GenerateAllSetterBase {
                     String varInList;
                     MockItem mockItem;
                     if (StringUtils.equalsIgnoreCase(typeParameter.getName(), "list")){
-                        varInList = PsiToolUtils.lowerStart(typeParameter.getName() + "s" + lvlPrefix + i);
+                        varInList = PsiToolUtils.lowerStart(typeParameter.getName() + "s" + "$" + listVarName +"_" + i);
                         mockItem = mockList(parameter, varInList, lvlPrefix+i);
                     }else{
-                        varInList = PsiToolUtils.lowerStart(typeParameter.getName() + lvlPrefix + i);
+                        varInList = PsiToolUtils.lowerStart(typeParameter.getName() + "$" + listVarName +"_" + i);
                         mockItem = mockOne(parameter,varInList, lvlPrefix+i);
                     }
                     mockItem.setBlock(mockItem.getBlock().replace(mockItem.getVarName(), varInList));
