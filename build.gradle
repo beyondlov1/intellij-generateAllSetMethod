@@ -1,19 +1,12 @@
-//buildscript {
-//    repositories {
-//        mavenCentral()
-////        maven { url 'https://dl.bintray.com/jetbrains/intellij-plugin-service'}
-//    }
-//}
-
-
 plugins {
     id 'java'
-    id 'org.jetbrains.intellij' version '1.1.2'
+    id 'org.jetbrains.intellij'  version '0.6.5'
 }
 
 
 repositories {
     mavenCentral()
+    mavenLocal()
 }
 
 
@@ -29,33 +22,15 @@ apply plugin: 'org.jetbrains.intellij'
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
 
-//    需要来填写publish这块 类似
-//    publish {
-//        username 'AmailP'
-//        pluginId '7415'
-//    }
-
 
 intellij {
-//    IC-2016.1
-//    version 'IU-2018.3' //IntelliJ IDEA dependency
-
-    pluginName.set('GenerateAllSetter')
-    version.set('2018.3')
-    type.set('IU')
-    downloadSources.set(false)
-    updateSinceUntilBuild.set(false)
-//    plugins.set('coverage') //Bundled plugin dependencies
-//    sandboxDirectory.set('sandbox')
-//
-    plugins.set([ 'Kotlin', 'org.nik.presentation-assistant:1.0.1', 'Lombook Plugin:0.31-2018.3'])
-//
-//    sandboxDirectory.set('sandbox')
+    updateSinceUntilBuild false
+    localPath = 'C:\\Users\\Administrator\\.gradle\\caches\\modules-2\\files-2.1\\com.jetbrains.intellij.idea\\ideaIC\\2020.2.4\\5685bc139ed2e2c7f1113ac7a9d8f5fc5e3f0334\\ideaIC-2020.2.4'
+    plugins =['java', 'Kotlin', 'org.nik.presentation-assistant:1.0.1', 'Lombook Plugin:0.34-2020.2']
 }
 
 dependencies {
     testCompile group: 'junit', name: 'junit', version: '4.11'
-    // https://mvnrepository.com/artifact/org.assertj/assertj-core
     testCompile group: 'org.assertj', name: 'assertj-core', version: '3.12.2'
 
 }

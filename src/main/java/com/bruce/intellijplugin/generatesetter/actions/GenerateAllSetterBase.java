@@ -208,7 +208,12 @@ public abstract class GenerateAllSetterBase extends PsiElementBaseIntentionActio
             }else{
                 splitText = "   ";
             }
+            // 不知道为什么放在handleWithNameTypeReturnType之前就可以, 放在后边就报错
+            if (StringUtils.equals(binaryExpression.getOperationSign().getText(), ">>")){
+                copyComment(project,type, returnType);
+            }
             handleWithNameTypeReturnType(name,type,returnType, project, element.getContainingFile(), splitText,element.getPrevSibling(), editor);
+
         }else if (psiParent instanceof PsiMethod) {
             PsiMethod method = (PsiMethod) psiParent;
             if (method.getReturnType() == null) {
@@ -217,6 +222,26 @@ public abstract class GenerateAllSetterBase extends PsiElementBaseIntentionActio
 
             handleWithMethod(method, project, method);
         }
+    }
+
+    private void copyComment(Project project, PsiType sourceType, PsiType targetType) {
+        PsiClass sourceClass = PsiTypesUtil.getPsiClass(sourceType);
+        PsiClass targetClass =  PsiTypesUtil.getPsiClass(targetType);
+        if (sourceClass == null || targetClass == null) return;
+        PsiField[] sourceFields = sourceClass.getAllFields();
+        PsiField[] targetFields = targetClass.getAllFields();
+        for (PsiField targetField : targetFields) {
+            for (PsiField sourceField : sourceFields) {
+                if (StringUtils.equals(sourceField.getName(), targetField.getName())){
+                    if (targetField.getDocComment() == null && sourceField.getDocComment() != null){
+                        targetField.getParent().addBefore(sourceField.getDocComment(), targetField);
+                        break;
+                    }
+                }
+            }
+        }
+        PsiDocumentManager psiDocumentManager = PsiDocumentManager.getInstance(project);
+        PsiDocumentUtils.commitAndSaveDocument(psiDocumentManager, psiDocumentManager.getDocument(targetClass.getContainingFile()));
     }
 
     private void handleWithNameTypeReturnType(String name, PsiType sourceType, PsiType returnType, Project project, PsiFile psiFile, String splitText, PsiElement element, Editor editor){
