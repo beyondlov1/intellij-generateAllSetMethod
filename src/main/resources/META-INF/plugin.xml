@@ -108,7 +108,7 @@
     ]]>
     </change-notes>
 
-    <idea-version since-build="202"/>
+    <idea-version since-build="182"/>
 
     <depends>com.intellij.modules.java</depends>
 
