@@ -1,5 +1,16 @@
 # intellij-generateAllSetMethod
 
+---
+beyondlov1 modify:
+version>=2.9
+- convert more efficiently
+![setter1](https://user-images.githubusercontent.com/24317435/203989058-4c6cf1e7-ac00-4f35-8ff3-8fbe00978995.gif)
+
+version>=2.10
+- copy comments for convert
+![setter2](https://user-images.githubusercontent.com/24317435/203989332-cdf224d3-c411-4444-951f-e45afb2602ef.gif)
+
+---
 
 [![GitHub release][release-img]][latest-release] [![Jetbrains Plugins][plugin-img]][plugin] 
 [![Version](http://phpstorm.espend.de/badge/9360/version)][plugin]  
@@ -14,6 +25,7 @@
 
 - generate List Set Map return value
 ![ListImplement](https://raw.githubusercontent.com/gejun123456/intellij-generateAllSetMethod/master/screenshot/generate_list_default_value.gif)
+
 Installation
 ----
 
